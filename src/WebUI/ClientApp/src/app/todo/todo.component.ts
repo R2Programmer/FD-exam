@@ -197,7 +197,7 @@ export class TodoComponent implements OnInit {
       return;
     }
 
-    if (item.id === 0) {
+    if (isNewItem) {
       this.itemsClient
         .create({
           ...item, listId: this.selectedList.id
@@ -221,6 +221,7 @@ export class TodoComponent implements OnInit {
       setTimeout(() => this.addItem(), 250);
     }
   }
+
 
   deleteItem(item: TodoItemDto, countDown?: boolean) {
     if (countDown) {
