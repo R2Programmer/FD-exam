@@ -469,6 +469,9 @@
           },
           "done": {
             "type": "boolean"
+          },
+          "backgroundColor": {
+            "type": "string"
           }
         }
       },
@@ -591,6 +594,9 @@
           "note": {
             "type": "string",
             "nullable": true
+          },
+          "backgroundColor": {
+            "type": "string"
           }
         }
       },
