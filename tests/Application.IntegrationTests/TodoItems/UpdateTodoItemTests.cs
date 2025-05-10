@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using NUnit.Framework;
 using Todo_App.Application.Common.Exceptions;
 using Todo_App.Application.TodoItems.Commands.CreateTodoItem;

@@ -1,9 +1,12 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Todo_App.Application.TodoLists.Commands.CreateTodoList;
 using Todo_App.Application.TodoLists.Commands.DeleteTodoList;
+using Todo_App.Application.TodoLists.Commands.SoftDeleteTodoList;
+using Todo_App.Application.TodoLists.Commands.RestoreTodoList;
 using Todo_App.Application.TodoLists.Commands.UpdateTodoList;
 using Todo_App.Application.TodoLists.Queries.ExportTodos;
 using Todo_App.Application.TodoLists.Queries.GetTodos;
+using Todo_App.Application.TodoLists.Queries.GetDeletedTodoLists;
 
 namespace Todo_App.WebUI.Controllers;
 
@@ -13,6 +16,12 @@ public class TodoListsController : ApiControllerBase
     public async Task<ActionResult<TodosVm>> Get()
     {
         return await Mediator.Send(new GetTodosQuery());
+    }
+
+    [HttpGet("deleted")]
+    public async Task<ActionResult<DeletedTodoListsVm>> GetDeleted()
+    {
+        return await Mediator.Send(new GetDeletedTodoListsQuery());
     }
 
     [HttpGet("{id}")]
@@ -38,6 +47,22 @@ public class TodoListsController : ApiControllerBase
         }
 
         await Mediator.Send(command);
+
+        return NoContent();
+    }
+
+    [HttpPut("{id}/softdelete")]
+    public async Task<ActionResult> SoftDelete(int id)
+    {
+        await Mediator.Send(new SoftDeleteTodoListCommand(id));
+
+        return NoContent();
+    }
+
+    [HttpPut("{id}/restore")]
+    public async Task<ActionResult> Restore(int id)
+    {
+        await Mediator.Send(new RestoreTodoListCommand(id));
 
         return NoContent();
     }

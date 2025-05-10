@@ -5,19 +5,31 @@
 <p *ngIf="!lists"><em>Loading...</em></p>
 
 <div *ngIf="lists">
+  <div class="row mb-3">
+    <div class="col-12">
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="showDeletedLists" [(ngModel)]="showDeletedLists" (change)="toggleDeletedLists()">
+        <label class="form-check-label" for="showDeletedLists">Show Deleted Lists</label>
+      </div>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="showDeletedItems" [(ngModel)]="showDeletedItems" (change)="toggleDeletedItems()">
+        <label class="form-check-label" for="showDeletedItems">Show Deleted Items</label>
+      </div>
+    </div>
+  </div>
 
   <div class="row">
     <div class="col-sm-4">
       <div class="clearfix">
         <h2 class="float-start">Lists</h2>
         <button class="btn btn-default float-end" title="New List..."
-          (click)="showNewListModal(newListModalTemplate)">
+                (click)="showNewListModal(newListModalTemplate)">
           <i class="bi bi-journal-plus"></i>
         </button>
       </div>
       <ul class="list-group">
         <li *ngFor="let list of lists; index as i" class="list-group-item"
-          [ngClass]="{ 'active': selectedList == list }" (click)="selectedList = list">
+            [ngClass]="{ 'active': selectedList == list }" (click)="selectedList = list; updateFilteredItems()">
           <div class="clearfix">
             <div class="float-start">
               {{ list.title }}
@@ -28,42 +40,137 @@
           </div>
         </li>
       </ul>
+
+      <!-- Deleted Lists Section -->
+      <div *ngIf="showDeletedLists && deletedLists && deletedLists.length > 0" class="mt-4">
+        <h3 class="h5">Deleted Lists</h3>
+        <ul class="list-group">
+          <li *ngFor="let list of deletedLists" class="list-group-item list-group-item-danger">
+            <div class="d-flex justify-content-between align-items-center">
+              <span>{{ list.title }}</span>
+              <div>
+                <button class="btn btn-sm btn-outline-success me-2" (click)="restoreList(list)">
+                  <i class="bi bi-arrow-counterclockwise"></i> Restore
+                </button>
+                <button class="btn btn-sm btn-outline-danger" (click)="confirmPermanentDeleteList(permanentDeleteListModalTemplate, list)">
+                  <i class="bi bi-trash"></i> Delete Permanently
+                </button>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
     </div>
+
     <div class="col-sm-8" *ngIf="selectedList">
       <div class="clearfix">
         <h2 class="float-start">{{ selectedList.title }}</h2>
         <button id="listOptions" class="btn btn-default float-end" title="List Options..."
-          (click)="showListOptionsModal(listOptionsModalTemplate)">
+                (click)="showListOptionsModal(listOptionsModalTemplate)">
           <i class="bi bi-three-dots-vertical"></i>
         </button>
       </div>
+
+      <!-- Search and Tag Filters -->
+      <div class="mb-3">
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input type="text" class="form-control" placeholder="Search items..." [(ngModel)]="searchQuery" (input)="filterItems()">
+        </div>
+      </div>
+
+      <!-- Tag Filters -->
+      <div class="mb-3" *ngIf="allTags.length > 0">
+        <div class="d-flex flex-wrap gap-1 align-items-center mb-2" *ngIf="mostUsedTags.length > 0">
+          <small class="text-muted">Most Tag Used:</small>
+          <span *ngFor="let tag of mostUsedTags"
+                class="badge"
+                [ngClass]="selectedTags.includes(tag) ? 'bg-primary' : 'bg-light text-dark'"
+                style="cursor: pointer;"
+                (click)="toggleTagFilter(tag)">
+            {{ tag }}
+          </span>
+        </div>
+
+        <div class="d-flex flex-wrap gap-1 align-items-center" *ngIf="selectedTags.length > 0">
+          <small class="text-muted">Filtered by:</small>
+          <span *ngFor="let tag of selectedTags" class="badge bg-primary" style="cursor: pointer;" (click)="toggleTagFilter(tag)">
+            {{ tag }} <i class="bi bi-x"></i>
+          </span>
+          <button *ngIf="selectedTags.length > 0" class="btn btn-sm btn-link" (click)="clearTagFilters()">Clear all</button>
+        </div>
+      </div>
+
       <ul id="todo-items" class="list-group mb-2">
-        <li class="list-group-item" *ngFor="let item of selectedList.items; index as i">
+        <li class="list-group-item" *ngFor="let item of filteredItems; index as i" [ngStyle]="{ 'background-color': item.backgroundColor || '#ffffff' }">
           <div class="d-flex">
             <div class="todo-item-checkbox">
               <input type="checkbox" [(ngModel)]="item.done" (change)="updateItem(item)" />
             </div>
+
             <div class="flex-fill">
               <input id="{{ 'itemTitle' + i }}" *ngIf="item == selectedItem" type="text"
-                class="form-control item-input-control" [(ngModel)]="item.title" (keyup.enter)="updateItem(item, true)"
-                (blur)="updateItem(item)" autofocus="autofocus" />
+                     class="form-control item-input-control" [(ngModel)]="item.title" (keyup.enter)="updateItem(item, true)"
+                     (blur)="updateItem(item)" autofocus="autofocus" />
               <div class="todo-item-title" *ngIf="item != selectedItem" [ngClass]="{ 'done-todo': item.done }"
-                (click)="editItem(item, 'itemTitle' + i)" class="form-control item-input-control">
+                   (click)="editItem(item, 'itemTitle' + i)" class="form-control item-input-control">
                 <span>{{ item.title }}</span>
+              </div>
+
+              <!-- Item Tags -->
+              <div class="mt-2 d-flex flex-wrap gap-1" *ngIf="item.tags && item.tags.length > 0">
+                <span *ngFor="let tag of item.tags" class="badge bg-secondary">
+                  {{ tag }}
+                  <i class="bi bi-x" style="cursor: pointer;" (click)="removeTag(item, tag); $event.stopPropagation();"></i>
+                </span>
+              </div>
+
+              <!-- Add Tag Input (only when item is selected) -->
+              <div class="mt-2 input-group input-group-sm" *ngIf="item == selectedItem">
+                <span class="input-group-text"><i class="bi bi-tag"></i></span>
+                <input type="text" class="form-control" placeholder="Add a tag..."
+                       [(ngModel)]="tagInput"
+                       (keyup.enter)="addTag(item, tagInput)">
+                <button class="btn btn-outline-secondary" type="button" (click)="addTag(item, tagInput)">Add</button>
               </div>
             </div>
             <div class="todo-item-commands">
+              <input type="color" [(ngModel)]="item.backgroundColor" (change)="updateItem(item)" title="Change Background Color" />
               <button *ngIf="item.id != 0" (click)="showItemDetailsModal(itemDetailsModalTemplate, item)"
-                class="btn btn-default btn-xs" role="button">
+                      class="btn btn-default btn-xs" role="button">
                 <i class="bi bi-three-dots-vertical"></i>
               </button>
             </div>
           </div>
         </li>
-        <li class="list-group-item" (click)="addItem()">
-          <button class="btn btn-default">Add Item...</button>
-        </li>
       </ul>
+
+      <button class="btn btn-primary w-100" (click)="addItem()">Add Item</button>
+
+      <!-- Deleted Items Section -->
+      <div *ngIf="showDeletedItems && deletedItems && deletedItems.length > 0" class="mt-4">
+        <h3 class="h5">Deleted Items</h3>
+        <ul class="list-group">
+          <li *ngFor="let item of deletedItems" class="list-group-item list-group-item-danger">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <span [ngClass]="{ 'done-todo': item.done }">{{ item.title }}</span>
+                <div class="mt-1 d-flex flex-wrap gap-1" *ngIf="item.tags && item.tags.length > 0">
+                  <span *ngFor="let tag of item.tags" class="badge bg-secondary">{{ tag }}</span>
+                </div>
+              </div>
+              <div>
+                <button class="btn btn-sm btn-outline-success me-2" (click)="restoreItem(item)">
+                  <i class="bi bi-arrow-counterclockwise"></i> Restore
+                </button>
+                <button class="btn btn-sm btn-outline-danger" (click)="confirmPermanentDeleteItem(permanentDeleteItemModalTemplate, item)">
+                  <i class="bi bi-trash"></i> Delete Permanently
+                </button>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 </div>
@@ -83,7 +190,7 @@
     <div class="form-group">
       <label for="inputListTitle">Title</label>
       <input type="text" class="form-control" id="inputListTitle" placeholder="List name..."
-        [(ngModel)]="listOptionsEditor.title" (keyup.enter)="updateListOptions()" />
+             [(ngModel)]="listOptionsEditor.title" (keyup.enter)="updateListOptions()" />
     </div>
     <div *ngIf="debug">
       <pre>{{ listOptionsEditor | json }}</pre>
@@ -92,7 +199,12 @@
   <div class="modal-footer">
     <div class="clearfix">
       <div class="float-start">
-        <button class="btn btn-default text-danger" (click)="confirmDeleteList(deleteListModalTemplate)">Delete</button>
+        <button class="btn btn-warning text-white me-2" (click)="confirmSoftDeleteList(softDeleteListModalTemplate)">
+          <i class="bi bi-archive"></i> Soft Delete
+        </button>
+        <button class="btn btn-danger" (click)="confirmDeleteList(deleteListModalTemplate)">
+          <i class="bi bi-trash"></i> Delete
+        </button>
       </div>
       <div class="float-end">
         <button class="btn btn-default" (click)="listOptionsModalRef.hide()">Cancel</button>
@@ -111,21 +223,38 @@
   </div>
   <div class="modal-body">
     <form [formGroup]="itemDetailsFormGroup" class="form">
-      <div class="form-group">
+      <div class="form-group mb-3">
         <label for="list">List</label>
         <select class="form-control" formControlName="listId">
           <option [ngValue]="list.id" *ngFor="let list of lists">{{ list.title }}</option>
         </select>
       </div>
-      <div class="form-group">
+      <div class="form-group mb-3">
         <label for="priority">Priority</label>
         <select class="form-control" formControlName="priority">
           <option [ngValue]="level.value" *ngFor="let level of priorityLevels">{{ level.name }}</option>
         </select>
       </div>
-      <div class="form-group">
+      <div class="form-group mb-3">
         <label for="note">Note</label>
         <textarea id="note" class="form-control" rows="3" formControlName="note"></textarea>
+      </div>
+
+      <!-- Tags in modal -->
+      <div class="form-group mb-3">
+        <label>Tags</label>
+        <div class="d-flex flex-wrap gap-1 mb-2">
+          <span *ngFor="let tag of selectedItem?.tags" class="badge bg-secondary">
+            {{ tag }}
+            <i class="bi bi-x" style="cursor: pointer;" (click)="removeTag(selectedItem, tag)"></i>
+          </span>
+        </div>
+        <div class="input-group">
+          <input type="text" class="form-control" placeholder="Add a tag..."
+                 [(ngModel)]="tagInput" [ngModelOptions]="{standalone: true}"
+                 (keyup.enter)="addTag(selectedItem, tagInput)">
+          <button class="btn btn-outline-secondary" type="button" (click)="addTag(selectedItem, tagInput)">Add</button>
+        </div>
       </div>
     </form>
     <div *ngIf="debug">
@@ -135,12 +264,38 @@
   <div class="modal-footer">
     <div class="clearfix">
       <div class="float-start">
-        <button class="btn btn-default text-danger" (click)="deleteItem(selectedItem, true)">{{deleting ? 'Deleting ' + deleteCountDown + ' ...' : 'Delete'}}</button>
+        <button class="btn btn-warning text-white me-2" (click)="softDeleteItem(selectedItem, true)">
+          <i class="bi bi-archive"></i> {{deleting ? 'Soft Deleting ' + deleteCountDown + ' ...' : 'Soft Delete'}}
+        </button>
+        <button class="btn btn-danger" (click)="hardDeleteItem(selectedItem, true)">
+          <i class="bi bi-trash"></i> {{deleting ? 'Deleting ' + deleteCountDown + ' ...' : 'Delete'}}
+        </button>
       </div>
       <div class="float-end">
         <button class="btn btn-default" (click)="itemDetailsModalRef.hide()">Cancel</button>
         <button class="btn btn-primary" (click)="updateItemDetails()">Update</button>
       </div>
+    </div>
+  </div>
+</ng-template>
+
+<ng-template #softDeleteListModalTemplate>
+  <div class="modal-header">
+    <h4 class="modal-title pull-left">Soft Delete "{{ selectedList?.title }}"?</h4>
+    <button type="button" class="close btn-close pull-right" aria-label="Close" (click)="softDeleteListModalRef.hide()">
+      <span aria-hidden="true" class="visually-hidden">&times;</span>
+    </button>
+  </div>
+  <div class="modal-body">
+    <p>The list will be moved to deleted items and can be restored later.</p>
+    <div *ngIf="debug">
+      <pre>{{ selectedList | json }}</pre>
+    </div>
+  </div>
+  <div class="modal-footer clearfix">
+    <div class="float-end">
+      <button type="button" class="btn btn-default" (click)="softDeleteListModalRef.hide()">Cancel</button>
+      <button type="button" class="btn btn-warning text-white" (click)="softDeleteListConfirmed()">Soft Delete</button>
     </div>
   </div>
 </ng-template>
@@ -153,7 +308,7 @@
     </button>
   </div>
   <div class="modal-body">
-    <p>All items will be permanently deleted. </p>
+    <p class="text-danger"><strong>Warning:</strong> This will permanently delete the list and all its items. This action cannot be undone.</p>
     <div *ngIf="debug">
       <pre>{{ selectedList | json }}</pre>
     </div>
@@ -161,7 +316,43 @@
   <div class="modal-footer clearfix">
     <div class="float-end">
       <button type="button" class="btn btn-default" (click)="deleteListModalRef.hide()">Cancel</button>
-      <button type="button" class="btn btn-danger" (click)="deleteListConfirmed()">Delete</button>
+      <button type="button" class="btn btn-danger" (click)="hardDeleteListConfirmed()">Delete Permanently</button>
+    </div>
+  </div>
+</ng-template>
+
+<ng-template #permanentDeleteListModalTemplate>
+  <div class="modal-header">
+    <h4 class="modal-title pull-left">Permanently Delete "{{ listToDelete?.title }}"?</h4>
+    <button type="button" class="close btn-close pull-right" aria-label="Close" (click)="permanentDeleteListModalRef.hide()">
+      <span aria-hidden="true" class="visually-hidden">&times;</span>
+    </button>
+  </div>
+  <div class="modal-body">
+    <p class="text-danger"><strong>Warning:</strong> This will permanently delete the list from the database. This action cannot be undone.</p>
+  </div>
+  <div class="modal-footer clearfix">
+    <div class="float-end">
+      <button type="button" class="btn btn-default" (click)="permanentDeleteListModalRef.hide()">Cancel</button>
+      <button type="button" class="btn btn-danger" (click)="permanentDeleteListConfirmed()">Delete Permanently</button>
+    </div>
+  </div>
+</ng-template>
+
+<ng-template #permanentDeleteItemModalTemplate>
+  <div class="modal-header">
+    <h4 class="modal-title pull-left">Permanently Delete "{{ itemToDelete?.title }}"?</h4>
+    <button type="button" class="close btn-close pull-right" aria-label="Close" (click)="permanentDeleteItemModalRef.hide()">
+      <span aria-hidden="true" class="visually-hidden">&times;</span>
+    </button>
+  </div>
+  <div class="modal-body">
+    <p class="text-danger"><strong>Warning:</strong> This will permanently delete the item from the database. This action cannot be undone.</p>
+  </div>
+  <div class="modal-footer clearfix">
+    <div class="float-end">
+      <button type="button" class="btn btn-default" (click)="permanentDeleteItemModalRef.hide()">Cancel</button>
+      <button type="button" class="btn btn-danger" (click)="permanentDeleteItemConfirmed()">Delete Permanently</button>
     </div>
   </div>
 </ng-template>
@@ -177,7 +368,7 @@
     <div class="form-group">
       <label for="title">Title</label>
       <input type="text" class="form-control" id="title" placeholder="List title..." [(ngModel)]="newListEditor.title"
-        [ngClass]="{ 'is-invalid': newListEditor.error }" (keyup.enter)="addList()" />
+             [ngClass]="{ 'is-invalid': newListEditor.error }" (keyup.enter)="addList()" />
       <div *ngIf="newListEditor.error" class="invalid-feedback">
         {{ newListEditor.error }}
       </div>
@@ -193,3 +384,4 @@
     </div>
   </div>
 </ng-template>
+

@@ -35,6 +35,12 @@ public class ApplicationDbContext : ApiAuthorizationDbContext<ApplicationUser>, 
     {
         builder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
 
+        // Add global query filters for soft delete and done items
+        builder.Entity<TodoList>().HasQueryFilter(l => !l.IsDeleted);
+
+        // Filter out both deleted items and done items
+        builder.Entity<TodoItem>().HasQueryFilter(i => !i.IsDeleted && !i.Done);
+
         base.OnModelCreating(builder);
     }
 
