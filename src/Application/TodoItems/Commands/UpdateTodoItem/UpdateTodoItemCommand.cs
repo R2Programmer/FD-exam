@@ -1,4 +1,4 @@
-﻿using MediatR;
+using MediatR;
 using Todo_App.Application.Common.Exceptions;
 using Todo_App.Application.Common.Interfaces;
 using Todo_App.Domain.Entities;

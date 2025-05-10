@@ -1,4 +1,4 @@
-﻿using FluentValidation;
+using FluentValidation;
 
 namespace Todo_App.Application.TodoItems.Commands.UpdateTodoItem;
 

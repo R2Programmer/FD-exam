@@ -5,6 +5,18 @@
 <p *ngIf="!lists"><em>Loading...</em></p>
 
 <div *ngIf="lists">
+  <div class="row mb-3">
+    <div class="col-12">
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="showDeletedLists" [(ngModel)]="showDeletedLists" (change)="toggleDeletedLists()">
+        <label class="form-check-label" for="showDeletedLists">Show Deleted Lists</label>
+      </div>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="showDeletedItems" [(ngModel)]="showDeletedItems" (change)="toggleDeletedItems()">
+        <label class="form-check-label" for="showDeletedItems">Show Deleted Items</label>
+      </div>
+    </div>
+  </div>
 
   <div class="row">
     <div class="col-sm-4">
@@ -17,7 +29,7 @@
       </div>
       <ul class="list-group">
         <li *ngFor="let list of lists; index as i" class="list-group-item"
-            [ngClass]="{ 'active': selectedList == list }" (click)="selectedList = list">
+            [ngClass]="{ 'active': selectedList == list }" (click)="selectedList = list; updateFilteredItems()">
           <div class="clearfix">
             <div class="float-start">
               {{ list.title }}
@@ -28,6 +40,26 @@
           </div>
         </li>
       </ul>
+
+      <!-- Deleted Lists Section -->
+      <div *ngIf="showDeletedLists && deletedLists && deletedLists.length > 0" class="mt-4">
+        <h3 class="h5">Deleted Lists</h3>
+        <ul class="list-group">
+          <li *ngFor="let list of deletedLists" class="list-group-item list-group-item-danger">
+            <div class="d-flex justify-content-between align-items-center">
+              <span>{{ list.title }}</span>
+              <div>
+                <button class="btn btn-sm btn-outline-success me-2" (click)="restoreList(list)">
+                  <i class="bi bi-arrow-counterclockwise"></i> Restore
+                </button>
+                <button class="btn btn-sm btn-outline-danger" (click)="confirmPermanentDeleteList(permanentDeleteListModalTemplate, list)">
+                  <i class="bi bi-trash"></i> Delete Permanently
+                </button>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
     </div>
 
     <div class="col-sm-8" *ngIf="selectedList">
@@ -114,6 +146,31 @@
       </ul>
 
       <button class="btn btn-primary w-100" (click)="addItem()">Add Item</button>
+
+      <!-- Deleted Items Section -->
+      <div *ngIf="showDeletedItems && deletedItems && deletedItems.length > 0" class="mt-4">
+        <h3 class="h5">Deleted Items</h3>
+        <ul class="list-group">
+          <li *ngFor="let item of deletedItems" class="list-group-item list-group-item-danger">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <span [ngClass]="{ 'done-todo': item.done }">{{ item.title }}</span>
+                <div class="mt-1 d-flex flex-wrap gap-1" *ngIf="item.tags && item.tags.length > 0">
+                  <span *ngFor="let tag of item.tags" class="badge bg-secondary">{{ tag }}</span>
+                </div>
+              </div>
+              <div>
+                <button class="btn btn-sm btn-outline-success me-2" (click)="restoreItem(item)">
+                  <i class="bi bi-arrow-counterclockwise"></i> Restore
+                </button>
+                <button class="btn btn-sm btn-outline-danger" (click)="confirmPermanentDeleteItem(permanentDeleteItemModalTemplate, item)">
+                  <i class="bi bi-trash"></i> Delete Permanently
+                </button>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 </div>
@@ -142,7 +199,12 @@
   <div class="modal-footer">
     <div class="clearfix">
       <div class="float-start">
-        <button class="btn btn-default text-danger" (click)="confirmDeleteList(deleteListModalTemplate)">Delete</button>
+        <button class="btn btn-warning text-white me-2" (click)="confirmSoftDeleteList(softDeleteListModalTemplate)">
+          <i class="bi bi-archive"></i> Soft Delete
+        </button>
+        <button class="btn btn-danger" (click)="confirmDeleteList(deleteListModalTemplate)">
+          <i class="bi bi-trash"></i> Delete
+        </button>
       </div>
       <div class="float-end">
         <button class="btn btn-default" (click)="listOptionsModalRef.hide()">Cancel</button>
@@ -202,12 +264,38 @@
   <div class="modal-footer">
     <div class="clearfix">
       <div class="float-start">
-        <button class="btn btn-default text-danger" (click)="deleteItem(selectedItem, true)">{{deleting ? 'Deleting ' + deleteCountDown + ' ...' : 'Delete'}}</button>
+        <button class="btn btn-warning text-white me-2" (click)="softDeleteItem(selectedItem, true)">
+          <i class="bi bi-archive"></i> {{deleting ? 'Soft Deleting ' + deleteCountDown + ' ...' : 'Soft Delete'}}
+        </button>
+        <button class="btn btn-danger" (click)="hardDeleteItem(selectedItem, true)">
+          <i class="bi bi-trash"></i> {{deleting ? 'Deleting ' + deleteCountDown + ' ...' : 'Delete'}}
+        </button>
       </div>
       <div class="float-end">
         <button class="btn btn-default" (click)="itemDetailsModalRef.hide()">Cancel</button>
         <button class="btn btn-primary" (click)="updateItemDetails()">Update</button>
       </div>
+    </div>
+  </div>
+</ng-template>
+
+<ng-template #softDeleteListModalTemplate>
+  <div class="modal-header">
+    <h4 class="modal-title pull-left">Soft Delete "{{ selectedList?.title }}"?</h4>
+    <button type="button" class="close btn-close pull-right" aria-label="Close" (click)="softDeleteListModalRef.hide()">
+      <span aria-hidden="true" class="visually-hidden">&times;</span>
+    </button>
+  </div>
+  <div class="modal-body">
+    <p>The list will be moved to deleted items and can be restored later.</p>
+    <div *ngIf="debug">
+      <pre>{{ selectedList | json }}</pre>
+    </div>
+  </div>
+  <div class="modal-footer clearfix">
+    <div class="float-end">
+      <button type="button" class="btn btn-default" (click)="softDeleteListModalRef.hide()">Cancel</button>
+      <button type="button" class="btn btn-warning text-white" (click)="softDeleteListConfirmed()">Soft Delete</button>
     </div>
   </div>
 </ng-template>
@@ -220,7 +308,7 @@
     </button>
   </div>
   <div class="modal-body">
-    <p>All items will be permanently deleted. </p>
+    <p class="text-danger"><strong>Warning:</strong> This will permanently delete the list and all its items. This action cannot be undone.</p>
     <div *ngIf="debug">
       <pre>{{ selectedList | json }}</pre>
     </div>
@@ -228,7 +316,43 @@
   <div class="modal-footer clearfix">
     <div class="float-end">
       <button type="button" class="btn btn-default" (click)="deleteListModalRef.hide()">Cancel</button>
-      <button type="button" class="btn btn-danger" (click)="deleteListConfirmed()">Delete</button>
+      <button type="button" class="btn btn-danger" (click)="hardDeleteListConfirmed()">Delete Permanently</button>
+    </div>
+  </div>
+</ng-template>
+
+<ng-template #permanentDeleteListModalTemplate>
+  <div class="modal-header">
+    <h4 class="modal-title pull-left">Permanently Delete "{{ listToDelete?.title }}"?</h4>
+    <button type="button" class="close btn-close pull-right" aria-label="Close" (click)="permanentDeleteListModalRef.hide()">
+      <span aria-hidden="true" class="visually-hidden">&times;</span>
+    </button>
+  </div>
+  <div class="modal-body">
+    <p class="text-danger"><strong>Warning:</strong> This will permanently delete the list from the database. This action cannot be undone.</p>
+  </div>
+  <div class="modal-footer clearfix">
+    <div class="float-end">
+      <button type="button" class="btn btn-default" (click)="permanentDeleteListModalRef.hide()">Cancel</button>
+      <button type="button" class="btn btn-danger" (click)="permanentDeleteListConfirmed()">Delete Permanently</button>
+    </div>
+  </div>
+</ng-template>
+
+<ng-template #permanentDeleteItemModalTemplate>
+  <div class="modal-header">
+    <h4 class="modal-title pull-left">Permanently Delete "{{ itemToDelete?.title }}"?</h4>
+    <button type="button" class="close btn-close pull-right" aria-label="Close" (click)="permanentDeleteItemModalRef.hide()">
+      <span aria-hidden="true" class="visually-hidden">&times;</span>
+    </button>
+  </div>
+  <div class="modal-body">
+    <p class="text-danger"><strong>Warning:</strong> This will permanently delete the item from the database. This action cannot be undone.</p>
+  </div>
+  <div class="modal-footer clearfix">
+    <div class="float-end">
+      <button type="button" class="btn btn-default" (click)="permanentDeleteItemModalRef.hide()">Cancel</button>
+      <button type="button" class="btn btn-danger" (click)="permanentDeleteItemConfirmed()">Delete Permanently</button>
     </div>
   </div>
 </ng-template>
@@ -260,3 +384,4 @@
     </div>
   </div>
 </ng-template>
+

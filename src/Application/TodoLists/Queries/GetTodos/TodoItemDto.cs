@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using Todo_App.Application.Common.Mappings;
 using Todo_App.Domain.Entities;
+using Todo_App.Application.TodoItems.Queries.GetTodoItemsWithPagination;
 
 namespace Todo_App.Application.TodoLists.Queries.GetTodos;
 
@@ -19,6 +20,11 @@ public class TodoItemDto : IMapFrom<TodoItem>
     public string? Note { get; set; }
 
     public string BackgroundColor { get; set; }
+
+    public bool IsDeleted { get; set; }
+
+    public DateTime? DeletedAt { get; set; }
+
 
     public void Mapping(Profile profile)
     {

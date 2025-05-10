@@ -1,12 +1,18 @@
-import { Component, TemplateRef, OnInit } from '@angular/core';
-import { FormBuilder } from '@angular/forms';
-import { BsModalService, BsModalRef } from 'ngx-bootstrap/modal';
+import { Component,  TemplateRef,  OnInit } from "@angular/core"
+import  { FormBuilder } from "@angular/forms"
+import  { BsModalService, BsModalRef } from "ngx-bootstrap/modal"
 import {
-  TodoListsClient, TodoItemsClient,
-  TodoListDto, TodoItemDto, PriorityLevelDto,
-  CreateTodoListCommand, UpdateTodoListCommand,
-  CreateTodoItemCommand, UpdateTodoItemDetailCommand
-} from '../web-api-client';
+   TodoListsClient,
+   TodoItemsClient,
+   TodoListDto,
+   TodoItemDto,
+    PriorityLevelDto,
+   CreateTodoListCommand,
+   UpdateTodoListCommand,
+   CreateTodoItemCommand,
+  UpdateTodoItemDetailCommand,
+   UpdateTodoItemCommand,
+} from "../web-api-client"
 
 @Component({
   selector: "app-todo-component",
@@ -27,13 +33,20 @@ export class TodoComponent implements OnInit {
   newListModalRef: BsModalRef
   listOptionsModalRef: BsModalRef
   deleteListModalRef: BsModalRef
+  softDeleteListModalRef: BsModalRef
   itemDetailsModalRef: BsModalRef
+  permanentDeleteListModalRef: BsModalRef
+  permanentDeleteItemModalRef: BsModalRef
   itemDetailsFormGroup = this.fb.group({
     id: [null],
     listId: [null],
     priority: [""],
     note: [""],
   })
+
+  // Items to delete permanently
+  listToDelete: TodoListDto = null
+  itemToDelete: TodoItemDto = null
 
   // Tag related properties
   tagInput = ""
@@ -43,6 +56,14 @@ export class TodoComponent implements OnInit {
   filteredItems: TodoItemDto[] = []
   mostUsedTags: string[] = []
 
+  // Soft delete related properties
+  showDeletedItems = false
+  showDeletedLists = false
+  deletedLists: TodoListDto[] = []
+  deletedItems: TodoItemDto[] = []
+  restoreListModalRef: BsModalRef
+  restoreItemModalRef: BsModalRef
+
   constructor(
     private listsClient: TodoListsClient,
     private itemsClient: TodoItemsClient,
@@ -51,12 +72,21 @@ export class TodoComponent implements OnInit {
   ) { }
 
   ngOnInit(): void {
+    this.loadLists()
+  }
+
+  loadLists(): void {
     this.listsClient.get().subscribe(
       (result) => {
-        this.lists = result.lists
+        console.log("Loaded lists:", result)
+        // Filter out soft-deleted lists
+        this.lists = result.lists.filter((list) => list.isDeleted !== true)
 
         // Initialize tags for each item if they don't exist
         this.lists.forEach((list) => {
+          // Filter out soft-deleted items
+          list.items = list.items.filter((item) => item.isDeleted !== true)
+
           list.items.forEach((item) => {
             if (!item.tags) {
               item.tags = []
@@ -76,9 +106,95 @@ export class TodoComponent implements OnInit {
     )
   }
 
+  // Load deleted lists
+  loadDeletedLists(): void {
+    this.listsClient.getDeleted().subscribe(
+      (result) => {
+        this.deletedLists = result.lists
+      },
+      (error) => console.error(error),
+    )
+  }
+
+  // Load deleted items
+  loadDeletedItems(): void {
+    this.itemsClient.getDeleted().subscribe(
+      (result) => {
+        this.deletedItems = result.items
+      },
+      (error) => console.error(error),
+    )
+  }
+
+  // Toggle showing deleted lists
+  toggleDeletedLists(): void {
+    this.showDeletedLists = !this.showDeletedLists
+    if (this.showDeletedLists) {
+      this.loadDeletedLists()
+    }
+  }
+
+  // Toggle showing deleted items
+  toggleDeletedItems(): void {
+    this.showDeletedItems = !this.showDeletedItems
+    if (this.showDeletedItems) {
+      this.loadDeletedItems()
+    }
+  }
+
+  // Restore a list
+  restoreList(list: TodoListDto): void {
+    this.listsClient.restore(list.id).subscribe(
+      () => {
+        // Remove from deleted lists
+        this.deletedLists = this.deletedLists.filter((l) => l.id !== list.id)
+
+        // Add to active lists
+        list.isDeleted = false
+        this.lists.push(list)
+
+        // If no list is selected, select this one
+        if (!this.selectedList) {
+          this.selectedList = list
+          this.updateFilteredItems()
+        }
+
+        this.updateAllTags()
+        this.updateMostUsedTags()
+      },
+      (error) => console.error(error),
+    )
+  }
+
+  // Restore an item
+  restoreItem(item: TodoItemDto): void {
+    this.itemsClient.restore(item.id).subscribe(
+      () => {
+        // Remove from deleted items
+        this.deletedItems = this.deletedItems.filter((i) => i.id !== item.id)
+
+        // Add to its list
+        const listIndex = this.lists.findIndex((l) => l.id === item.listId)
+        if (listIndex !== -1) {
+          item.isDeleted = false
+          this.lists[listIndex].items.push(item)
+
+          // If this is the selected list, update filtered items
+          if (this.selectedList && this.selectedList.id === item.listId) {
+            this.updateFilteredItems()
+          }
+
+          this.updateAllTags()
+          this.updateMostUsedTags()
+        }
+      },
+      (error) => console.error(error),
+    )
+  }
+
   // Lists
   remainingItems(list: TodoListDto): number {
-    return list.items.filter((t) => !t.done).length
+    return list.items.filter((t) => !t.done && !t.isDeleted).length
   }
 
   showNewListModal(template: TemplateRef<any>): void {
@@ -96,6 +212,7 @@ export class TodoComponent implements OnInit {
       id: 0,
       title: this.newListEditor.title,
       items: [],
+      isDeleted: false,
     } as TodoListDto
 
     this.listsClient.create(list as CreateTodoListCommand).subscribe(
@@ -132,27 +249,117 @@ export class TodoComponent implements OnInit {
     const list = this.listOptionsEditor as UpdateTodoListCommand
     this.listsClient.update(this.selectedList.id, list).subscribe(
       () => {
-        ; (this.selectedList.title = this.listOptionsEditor.title), this.listOptionsModalRef.hide()
+        this.selectedList.title = this.listOptionsEditor.title
+        this.listOptionsModalRef.hide()
         this.listOptionsEditor = {}
       },
       (error) => console.error(error),
     )
   }
 
+  // Soft Delete List
+  confirmSoftDeleteList(template: TemplateRef<any>) {
+    this.listOptionsModalRef.hide()
+    this.softDeleteListModalRef = this.modalService.show(template)
+  }
+
+  softDeleteListConfirmed(): void {
+    // Use soft delete
+    this.listsClient.softDelete(this.selectedList.id).subscribe(
+      () => {
+        console.log(`List ${this.selectedList.id} soft deleted successfully`)
+        this.softDeleteListModalRef.hide()
+
+        // Mark as deleted
+        this.selectedList.isDeleted = true
+
+        // Remove from active lists
+        this.lists = this.lists.filter((list) => list.id !== this.selectedList.id)
+
+        // Select another list if available
+        this.selectedList = this.lists.length ? this.lists[0] : null
+
+        this.updateAllTags()
+        this.updateMostUsedTags()
+        this.updateFilteredItems()
+
+        // Refresh deleted lists if they're being shown
+        if (this.showDeletedLists) {
+          this.loadDeletedLists()
+        }
+      },
+      (error) => {
+        console.error("Error soft deleting list:", error)
+        alert("Failed to soft delete the list. Please try again.")
+      },
+    )
+  }
+
+  // Hard Delete List
   confirmDeleteList(template: TemplateRef<any>) {
     this.listOptionsModalRef.hide()
     this.deleteListModalRef = this.modalService.show(template)
   }
 
-  deleteListConfirmed(): void {
+  hardDeleteListConfirmed(): void {
+    // Use hard delete
     this.listsClient.delete(this.selectedList.id).subscribe(
       () => {
         this.deleteListModalRef.hide()
+
+        // Remove from active lists
         this.lists = this.lists.filter((t) => t.id !== this.selectedList.id)
+
+        // Select another list if available
         this.selectedList = this.lists.length ? this.lists[0] : null
+
         this.updateAllTags()
         this.updateMostUsedTags()
         this.updateFilteredItems()
+      },
+      (error) => console.error(error),
+    )
+  }
+
+  // Permanent delete for already soft-deleted list
+  confirmPermanentDeleteList(template: TemplateRef<any>, list: TodoListDto): void {
+    this.listToDelete = list
+    this.permanentDeleteListModalRef = this.modalService.show(template)
+  }
+
+  permanentDeleteListConfirmed(): void {
+    if (!this.listToDelete) return
+
+    // Use hard delete
+    this.listsClient.delete(this.listToDelete.id).subscribe(
+      () => {
+        this.permanentDeleteListModalRef.hide()
+
+        // Remove from deleted lists
+        this.deletedLists = this.deletedLists.filter((t) => t.id !== this.listToDelete.id)
+        this.listToDelete = null
+      },
+      (error) => console.error(error),
+    )
+  }
+
+  // Permanent delete for already soft-deleted item
+  confirmPermanentDeleteItem(template: TemplateRef<any>, item: TodoItemDto): void {
+    this.itemToDelete = item
+    this.permanentDeleteItemModalRef = this.modalService.show(template)
+  }
+
+  permanentDeleteItemConfirmed(): void {
+    if (!this.itemToDelete) return
+
+    // Use hard delete
+    this.itemsClient.delete(this.itemToDelete.id).subscribe(
+      () => {
+        this.permanentDeleteItemModalRef.hide()
+
+        // Remove from deleted items
+        this.deletedItems = this.deletedItems.filter((t) => t.id !== this.itemToDelete.id)
+        this.itemToDelete = null
       },
       (error) => console.error(error),
     )
@@ -198,6 +405,7 @@ export class TodoComponent implements OnInit {
       title: "",
       done: false,
       tags: [],
+      isDeleted: false,
     } as TodoItemDto
 
     this.selectedList.items.push(item)
@@ -215,16 +423,17 @@ export class TodoComponent implements OnInit {
     const isNewItem = item.id === 0
 
     if (!item.title.trim()) {
-      this.deleteItem(item)
+      this.softDeleteItem(item)
       return
     }
 
     if (isNewItem) {
       this.itemsClient
         .create({
-          ...item,
-          listId: this.selectedList.id,
-        } as CreateTodoItemCommand)
+            ...item,
+            listId: this.selectedList.id,
+            isDeleted: false,
+        } as unknown as CreateTodoItemCommand)
         .subscribe(
           (result) => {
             item.id = result
@@ -235,7 +444,7 @@ export class TodoComponent implements OnInit {
           (error) => console.error(error),
         )
     } else {
-      this.itemsClient.update(item.id, item).subscribe(
+      this.itemsClient.update(item.id, item as UpdateTodoItemCommand).subscribe(
         () => {
           console.log("Update succeeded.")
           this.updateAllTags()
@@ -253,7 +462,8 @@ export class TodoComponent implements OnInit {
     }
   }
 
-  deleteItem(item: TodoItemDto, countDown?: boolean) {
+  // Soft delete item
+  softDeleteItem(item: TodoItemDto, countDown?: boolean) {
     if (countDown) {
       if (this.deleting) {
         this.stopDeleteCountDown()
@@ -263,7 +473,84 @@ export class TodoComponent implements OnInit {
       this.deleting = true
       this.deleteCountDownInterval = setInterval(() => {
         if (this.deleting && --this.deleteCountDown <= 0) {
-          this.deleteItem(item, false)
+          this.softDeleteItem(item, false)
+        }
+      }, 1000)
+      return
+    }
+    this.deleting = false
+    if (this.itemDetailsModalRef) {
+      this.itemDetailsModalRef.hide()
+    }
+
+    if (item.id === 0) {
+      // For new items that haven't been saved yet
+      const itemIndex = this.selectedList.items.indexOf(item)
+      if (itemIndex !== -1) {
+        this.selectedList.items.splice(itemIndex, 1)
+      }
+      this.updateFilteredItems()
+    } else {
+      // Use update method to set isDeleted flag
+      const updateCommand: UpdateTodoItemCommand = {
+          id: item.id,
+          title: item.title,
+        done: item.done,
+        backgroundColor: item.backgroundColor,
+          init: function(_data?: any): void {
+              throw new Error("Function not implemented.")
+          },
+          toJSON: function(data?: any) {
+              throw new Error("Function not implemented.")
+          }
+      }
+
+      this.itemsClient.update(item.id, updateCommand).subscribe(
+        () => {
+          console.log(`Item ${item.id} soft deleted successfully`)
+
+          // Mark as deleted
+          item.isDeleted = true
+
+          // Remove from active items in the selected list
+          if (this.selectedList) {
+            this.selectedList.items = this.selectedList.items.filter((i) => i.id !== item.id)
+          }
+
+          // Update all lists to ensure the item is removed everywhere
+          this.lists.forEach((list) => {
+            list.items = list.items.filter((i) => !(i.id === item.id))
+          })
+
+          this.updateAllTags()
+          this.updateMostUsedTags()
+          this.updateFilteredItems()
+
+          // Refresh deleted items if they're being shown
+          if (this.showDeletedItems) {
+            this.loadDeletedItems()
+          }
+        },
+        (error) => {
+          console.error("Error soft deleting item:", error)
+          alert("Failed to soft delete the item. Please try again.")
+        },
+      )
+    }
+  }
+
+  // Hard delete item
+  hardDeleteItem(item: TodoItemDto, countDown?: boolean) {
+    if (countDown) {
+      if (this.deleting) {
+        this.stopDeleteCountDown()
+        return
+      }
+      this.deleteCountDown = 3
+      this.deleting = true
+      this.deleteCountDownInterval = setInterval(() => {
+        if (this.deleting && --this.deleteCountDown <= 0) {
+          this.hardDeleteItem(item, false)
         }
       }, 1000)
       return
@@ -278,9 +565,12 @@ export class TodoComponent implements OnInit {
       this.selectedList.items.splice(itemIndex, 1)
       this.updateFilteredItems()
     } else {
+      // Use hard delete
       this.itemsClient.delete(item.id).subscribe(
         () => {
+          // Remove from active items
           this.selectedList.items = this.selectedList.items.filter((t) => t.id !== item.id)
+
           this.updateAllTags()
           this.updateMostUsedTags()
           this.updateFilteredItems()
@@ -345,11 +635,14 @@ export class TodoComponent implements OnInit {
     const tagSet = new Set<string>()
 
     this.lists.forEach((list) => {
-      list.items.forEach((item) => {
-        if (item.tags) {
-          item.tags.forEach((tag) => tagSet.add(tag))
-        }
-      })
+      // Only consider non-deleted items
+      list.items
+        .filter((item) => !item.isDeleted)
+        .forEach((item) => {
+          if (item.tags) {
+            item.tags.forEach((tag) => tagSet.add(tag))
+          }
+        })
     })
 
     this.allTags = Array.from(tagSet)
@@ -359,13 +652,16 @@ export class TodoComponent implements OnInit {
     const tagCounts: { [key: string]: number } = {}
 
     this.lists.forEach((list) => {
-      list.items.forEach((item) => {
-        if (item.tags) {
-          item.tags.forEach((tag) => {
-            tagCounts[tag] = (tagCounts[tag] || 0) + 1
-          })
-        }
-      })
+      // Only consider non-deleted items
+      list.items
+        .filter((item) => !item.isDeleted)
+        .forEach((item) => {
+          if (item.tags) {
+            item.tags.forEach((tag) => {
+              tagCounts[tag] = (tagCounts[tag] || 0) + 1
+            })
+          }
+        })
     })
 
     this.mostUsedTags = Object.entries(tagCounts)
@@ -400,6 +696,11 @@ export class TodoComponent implements OnInit {
     }
 
     this.filteredItems = this.selectedList.items.filter((item) => {
+      // Skip deleted items - make this check explicit
+      if (item.isDeleted === true) {
+        return false
+      }
+
       // Filter by tags if any are selected
       const matchesTags =
         this.selectedTags.length === 0 || (item.tags && this.selectedTags.every((tag) => item.tags.includes(tag)))
