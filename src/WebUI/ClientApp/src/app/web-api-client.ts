@@ -1068,7 +1068,7 @@ export class TodoItemDto implements ITodoItemDto {
     priority?: number;
     note?: string | undefined;
     backgroundColor?: string;
-
+  tags?: string[] | undefined;
     constructor(data?: ITodoItemDto) {
         if (data) {
             for (var property in data) {
